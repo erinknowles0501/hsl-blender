@@ -4,7 +4,6 @@
 //       - Some functions could use more/less complexity.
 //       - Cleverer or more readable versions of some functions.
 //       - Ensure hue0 and hue1 everywhere - not color, not 1+2.
-// TODO: Figure out error system. Just for devs - let's put it in the console.
 // TODO: Add polar+cartesian charts with points.
 // TODO: Some sanity styling for intuitive use. (also add bg to text on color for easier reading)
 // TODO: Add docblocks to functions/methods
@@ -14,11 +13,11 @@
 
 // Constants
 const BLANK_CARTESIAN_COORDS = { x: 0, y: 0 };
-const BLANK_POLAR_COORDS = { r: 0, theta: 0 }; // theta.degrees, theta.radians? Updating issues? Use getter/setter?
+const BLANK_POLAR_COORDS = { radius: 0, theta: 0 }; // theta.degrees, theta.radians? Updating issues? Use getter/setter?
 // const BLANK_POLAR_COORDS = { r: 0, theta: { degrees: 0, radians: 0 } }; // theta.degrees, theta.radians? Updating issues? Use getter/setter?
 const COORD_SYSTEM_TYPES = { POLAR: "polar", CARTESIAN: "cartesian" };
 
-// TODO: Move this into the error class, and import these values when needed elsewhere
+// TODO: Move this into the error class, and import these values when needed elsewhere.
 const DEV_MESSAGE_TYPES = {
   ERROR: {
     label: "Error",
@@ -108,27 +107,46 @@ class Error {
 
 // Handles any hue information and logic.
 class Hue {
+  // TODO: Consider: Hue is just an inheritance, and actual implementation uses HuePolar or HueCartesian?
+  // Before you make that call, quickly spec out the TODO's graph views. Will using a factory be a pain in the ass there?
+
+  // (JSON parse/stringify is safest/fastest/easiest/smallest overall method to deep clone an object.)
+  polar = JSON.parse(JSON.stringify(BLANK_POLAR_COORDS)); // polar: { radius, theta }
+  cartesian = JSON.parse(JSON.stringify(BLANK_CARTESIAN_COORDS)); // cartesian: { x, y }
+
+  // #GET_OTHER_COORDS_MAP = {
+  //   cartesian: this.setPolarCoords,
+  //   polar: this.setCartesianCoords,
+  // };
+
   // coords: One of polar or cartesian coordinate object
   // type:   One of 'polar' or 'cartesian'. See constants above - COORD_SYSTEM_TYPES
   constructor(coords, type) {
-    // Refactor this part....could be better.
-    // a factory...
-    if (type === "cartesian") {
-      this.polarCoords = setPolarCoords(coords);
-    } else if (type === "polar") {
-      this.cartesianCoords = setCartesianCoords(coords);
-    } else {
-      new Error(
-        DEV_MESSAGE_TYPES.ERROR,
-        `Coordinate system ${type} is not supported or does not exist.`
-      );
-    }
+    // if (type === "cartesian") {
+    //   this.polarCoords = setPolarCoords(coords);
+    // } else if (type === "polar") {
+    //   this.cartesianCoords = setCartesianCoords(coords);
+    // } else {
+    //   new Error(
+    //     DEV_MESSAGE_TYPES.ERROR,
+    //     `Coordinate system ${type} is not supported or does not exist.`
+    //   );
+    // }
+
+    this.setPolarCoords(coords, type === "polar");
+    this.setCartesianCoords(coords, type === "cartesian");
   }
 
   // returns cartesian coordinates object
   // error on missing or invalid polar coords,
   // error on cartesian already defined.
-  setCartesianCoords() {
+  setCartesianCoords(coords, noConversion) {
+    if (noConversion) {
+      this.cartesian.x = coords.x;
+      this.cartesian.y = coords.y;
+      return;
+    }
+
     // Math.cos() and .sin() expect radians. Convert the hue degree to radians first,
     // then convert it back to degrees for the cartesian coords.
 
@@ -144,8 +162,26 @@ class Hue {
   // returns polar coordinates object
   // error on missing or invalid polar coords,
   // error on cartesian already defined.
-  setPolarCoords() {
-    //
+  setPolarCoords(coords, noConversion) {
+    if (noConversion) {
+      this.polar.radius = coords.radius;
+      this.polar.theta = coords.theta;
+      return;
+    }
+
+    //function getPolar(hueCartesian) {
+    let hueRadians = Math.atan2(this.hueCartesian.y, hueCartesian.x);
+    let hueDegrees = hueRadians * (180 / Math.PI);
+
+    // Special case if both are negative: means we're in quadrant 3,
+    // where the degree has to be flipped from quad 1 to quad 3.
+    if (hueCartesian.x < 0 && hueCartesian.y < 0) {
+      hueRadians = 2 * Math.PI + hueRadians;
+      hueDegrees = hueRadians * (180 / Math.PI);
+    }
+
+    //return hueDegrees;
+    this.polar.theta = hueDegrees;
   }
 
   getDegreesFromRadians(radians) {
@@ -159,8 +195,8 @@ class Hue {
 
 // The business!
 function getBlendedColor(hue0 = null, hue1 = null) {
-  hue0 = new Hue(!!hue0 ? hue0 : Number(hue0Element.value));
-  hue1 = new Hue(!!hue1 ? hue1 : Number(hue1Element.value));
+  hue0 = new Hue(!!hue0 ? hue0 : Number(hue0Element.value), "polar");
+  hue1 = new Hue(!!hue1 ? hue1 : Number(hue1Element.value), "polar");
 
   // Hues range from 0-360, with red at both ends. We can think of them as degrees of a circle.
   // Take each hue and turn its polar coordinate to cartesian
@@ -169,36 +205,16 @@ function getBlendedColor(hue0 = null, hue1 = null) {
 
   //Average cartesian.
   //TODO: Refactor this. map()?
-  const averageHueCartesian = new Hue({
-    x: (hue0.cartesian.x + hue1.cartesian.x) / 2,
-    y: (hue0.cartesian.y + hue1.cartesian.y) / 2,
-  });
+  const averageHueCartesian = new Hue(
+    {
+      x: (hue0.cartesian.x + hue1.cartesian.x) / 2,
+      y: (hue0.cartesian.y + hue1.cartesian.y) / 2,
+    },
+    "cartesian"
+  );
 
   // Convert back and save to global.
   currentAverageHue = averageHueCartesian.polar.theta;
 
   domInterface.updateDisplay();
-}
-
-function getPolar(hueCartesian) {
-  let hueRadians = Math.atan2(hueCartesian.y, hueCartesian.x);
-  let hueDegrees = hueRadians * (180 / Math.PI);
-  console.log("hue degrees anyway", hueDegrees);
-  // console.log('hue radians');
-
-  // Special case if both are negative - we're in quadrant 3, where the degree has to be flipped from quad 1 to quad 3 (add 180);
-  if (hueCartesian.x < 0 && hueCartesian.y < 0) {
-    // console.log("hue cartesian if quad 3", hueCartesian);
-    // console.log("hue radians if quad 3", hueRadians);
-    // console.log("degrees if inverse radians: ", hueRadians * (180 / Math.PI));
-    //hueRadians = -hueRadians;
-    hueRadians = 2 * Math.PI + hueRadians;
-    hueDegrees = hueRadians * (180 / Math.PI);
-    //console.log("regular degrees before quad 3", hueDegrees);
-    //hueDegrees += 180;
-    console.log("huedegrees in quad3", hueDegrees);
-  }
-
-  // Convert to degrees and return
-  return hueDegrees;
 }
